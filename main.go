@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+type Dumper struct {
+	offset      int
+	offsetWidth int
+	nColumns    int
+}
+
 func repeat(n int, value string) []string {
 	result := make([]string, n)
 	for i := 0; i < n; i++ {
@@ -22,32 +28,49 @@ func makefmt(nBytesPerLines int, offsetWidth int) string {
 	return offsetFmt + "  " + dumpFmt + "\n"
 }
 
-func Fdump(path string, in *os.File, ierr error, out *os.File, oerr error) {
-	const ncol = 16 // number of bytes to display per line
-	f := makefmt(ncol, 4)
-	off := 0
-	bytes := [ncol]byte{0}
+func (this *Dumper) Fdump(path string, in *os.File, ierr error, out *os.File, oerr error) {
+	f := makefmt(this.nColumns, this.offsetWidth)
+	bytes := make([]byte, this.nColumns)
+	args := make([]any, this.nColumns+1)
 	fmt.Fprintf(out, "%v:\n", path)
+
+	var n int
+	n, ierr = in.Read(bytes[:])
 	for ierr != io.EOF {
-		var n int
+		for i, e := range bytes {
+			args[i+1] = e
+		}
+
+		args[0] = this.offset
+		this.offset += n
+
+		if n == this.nColumns {
+			fmt.Fprintf(out, f, args...)
+		} else {
+			g := makefmt(n, this.offsetWidth)
+			fmt.Fprintf(out, g, args[:n+1]...)
+		}
 		n, ierr = in.Read(bytes[:])
-		//fmt.Fprintf(out, f, off, bytes[:]...)
-		fmt.Fprintf(out, f, off, bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15])
-		off += n
 	}
 }
 
-func Dump(path string) {
+func (this *Dumper) Dump(path string) {
 	file, err := os.Open(path)
-	Fdump(path, file, err, os.Stdout, nil)
+	this.Fdump(path, file, err, os.Stdout, nil)
 }
 
 func main() {
+	dumper := Dumper{
+		offset:      0,
+		offsetWidth: 4,
+		nColumns:    16,
+	}
+
 	if len(os.Args) == 1 {
-		Fdump("<stdin>", os.Stdin, nil, os.Stdout, nil)
+		dumper.Fdump("<stdin>", os.Stdin, nil, os.Stdout, nil)
 	}
 
 	for _, path := range os.Args[1:] {
-		Dump(path)
+		dumper.Dump(path)
 	}
 }
